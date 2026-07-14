@@ -15,7 +15,29 @@
  * PROTOTYPE — alpha. Self-contained vanilla web component, no build step.
  */
 
-const VERSION = "0.1.0-proto";
+const VERSION = "0.2.0";
+
+// Preset colours for the "Couleur" section (name per language + RGB). Colours
+// aren't part of wled-assets (no illustration/localization there), so this small
+// stage-friendly set lives in the card. Tapping a swatch → light.turn_on rgb_color.
+const COLORS = [
+  { en: "Red", fr: "Rouge", rgb: [255, 0, 0] },
+  { en: "Orange", fr: "Orange", rgb: [255, 85, 0] },
+  { en: "Amber", fr: "Ambre", rgb: [255, 170, 0] },
+  { en: "Yellow", fr: "Jaune", rgb: [255, 238, 0] },
+  { en: "Green", fr: "Vert", rgb: [0, 200, 0] },
+  { en: "Cyan", fr: "Cyan", rgb: [0, 220, 220] },
+  { en: "Blue", fr: "Bleu", rgb: [0, 90, 255] },
+  { en: "Indigo", fr: "Indigo", rgb: [75, 0, 255] },
+  { en: "Magenta", fr: "Magenta", rgb: [255, 0, 220] },
+  { en: "Pink", fr: "Rose", rgb: [255, 105, 160] },
+];
+
+// Minimal UI strings for the colour section (en/fr; falls back to en).
+const UI = {
+  colors: { en: "🎨 Colour", fr: "🎨 Couleur" },
+  custom: { en: "Custom", fr: "Perso" },
+};
 
 // Slug rule reverse-engineered from the real wled-assets image filenames:
 //   "Chase 2" -> chase-2 · "Fire 2012" -> fire-2012 · "Noise2D" -> noise2d
@@ -52,7 +74,7 @@ class WledAssetsCard extends HTMLElement {
       palette_entity: config.palette_entity || null, // auto-derived if null
       language: config.language || null,             // else hass.language, else en
       assets_base: (config.assets_base || "/local/wled-assets").replace(/\/$/, ""),
-      show: config.show || ["palettes", "effects"],
+      show: config.show || ["colors", "palettes", "effects"],
       columns: config.columns || 4,
       title: config.title ?? null,
     };
@@ -138,6 +160,116 @@ class WledAssetsCard extends HTMLElement {
     });
   }
 
+  _light(data) {
+    this._hass.callService("light", "turn_on", {
+      entity_id: this._config.entity,
+      ...data,
+    });
+  }
+
+  // small localized-string + colour helpers
+  _t(key) {
+    const e = UI[key] || {};
+    return e[this._lang] || e.en || key;
+  }
+  _rgbToHex(rgb) {
+    if (!rgb) return "#ffffff";
+    return "#" + rgb.slice(0, 3).map((x) => x.toString(16).padStart(2, "0")).join("");
+  }
+  _hexToRgb(h) {
+    const m = h.replace("#", "").match(/.{2}/g).map((x) => parseInt(x, 16));
+    return [m[0], m[1], m[2]];
+  }
+
+  // ---- colour section -----------------------------------------------------
+
+  // Not backed by wled-assets — a direct controller for on/off, brightness,
+  // RGB (swatches + custom picker) and tunable white (CCT), driven off the
+  // light entity's real supported_color_modes so it only shows what the lamp can do.
+  _colorsSection(st) {
+    const a = st.attributes;
+    const modes = a.supported_color_modes || [];
+    const hasRgb = modes.some((m) => ["rgb", "rgbw", "rgbww", "hs", "xy"].includes(m));
+    const hasCct = modes.includes("color_temp");
+    const on = st.state === "on";
+    const briPct = on && a.brightness != null ? Math.round((a.brightness / 255) * 100) : on ? 100 : 0;
+    const kmin = a.min_color_temp_kelvin || 2000;
+    const kmax = a.max_color_temp_kelvin || 6535;
+    const curK = a.color_temp_kelvin || Math.round((kmin + kmax) / 2);
+
+    const wrap = document.createElement("div");
+    wrap.className = "section colors";
+
+    const head = document.createElement("div");
+    head.className = "sec-head";
+    head.innerHTML = `<span class="sec-label">${this._t("colors")}</span>
+      <button class="power ${on ? "on" : ""}" title="On/Off">⏻</button>`;
+    head.querySelector(".power").addEventListener("click", () =>
+      this._hass.callService("light", on ? "turn_off" : "turn_on", {
+        entity_id: this._config.entity,
+      })
+    );
+    wrap.appendChild(head);
+
+    // Brightness (fires on release to avoid flooding the lamp)
+    const bri = document.createElement("label");
+    bri.className = "slider-row";
+    bri.innerHTML = `<span class="ico">💡</span>
+      <input type="range" min="1" max="100" value="${briPct || 1}">
+      <span class="val">${briPct}%</span>`;
+    bri.querySelector("input").addEventListener("input", (e) => {
+      bri.querySelector(".val").textContent = e.target.value + "%";
+    });
+    bri.querySelector("input").addEventListener("change", (e) =>
+      this._light({ brightness_pct: +e.target.value })
+    );
+    wrap.appendChild(bri);
+
+    // RGB swatches + custom picker
+    if (hasRgb) {
+      const grid = document.createElement("div");
+      grid.className = "grid swatches";
+      grid.style.setProperty("--cols", this._config.columns);
+      COLORS.forEach((c) => {
+        const name = c[this._lang] || c.en;
+        const cell = document.createElement("button");
+        cell.className = "cell";
+        cell.title = name;
+        cell.innerHTML = `<span class="thumb swatch" style="background:rgb(${c.rgb.join(",")})"></span><span class="name">${name}</span>`;
+        cell.addEventListener("click", () => this._light({ rgb_color: c.rgb }));
+        grid.appendChild(cell);
+      });
+      const custom = document.createElement("label");
+      custom.className = "cell";
+      custom.innerHTML = `<span class="thumb picker" style="background:${this._rgbToHex(a.rgb_color)}"><input type="color" value="${this._rgbToHex(a.rgb_color)}"></span><span class="name">${this._t("custom")}</span>`;
+      const inp = custom.querySelector("input");
+      inp.addEventListener("input", (e) => {
+        custom.querySelector(".picker").style.background = e.target.value;
+      });
+      inp.addEventListener("change", (e) => this._light({ rgb_color: this._hexToRgb(e.target.value) }));
+      grid.appendChild(custom);
+      wrap.appendChild(grid);
+    }
+
+    // Tunable white (CCT)
+    if (hasCct) {
+      const cct = document.createElement("label");
+      cct.className = "slider-row cct";
+      cct.innerHTML = `<span class="ico">⚪</span>
+        <input type="range" min="${kmin}" max="${kmax}" step="50" value="${curK}">
+        <span class="val">${curK}K</span>`;
+      cct.querySelector("input").addEventListener("input", (e) => {
+        cct.querySelector(".val").textContent = e.target.value + "K";
+      });
+      cct.querySelector("input").addEventListener("change", (e) =>
+        this._light({ color_temp_kelvin: +e.target.value })
+      );
+      wrap.appendChild(cct);
+    }
+
+    return wrap;
+  }
+
   // ---- render -------------------------------------------------------------
 
   _render() {
@@ -148,6 +280,10 @@ class WledAssetsCard extends HTMLElement {
     }
 
     const sections = [];
+
+    if (this._config.show.includes("colors")) {
+      sections.push(this._colorsSection(st));
+    }
 
     if (this._config.show.includes("palettes")) {
       const pe = this._paletteEntity();
@@ -269,6 +405,18 @@ class WledAssetsCard extends HTMLElement {
         .thumb.noimg::after { content:"◑"; font-size:1.4rem; opacity:.35; }
         .name { font-size:.72rem; line-height:1.15; text-align:center; word-break:break-word;
                 display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .power { background:none; border:1px solid var(--divider-color,#8884); border-radius:999px; color:inherit; cursor:pointer; width:30px; height:30px; font-size:.95rem; line-height:1; }
+        .power.on { color:var(--primary-color,#03a9f4); border-color:var(--primary-color,#03a9f4); }
+        .slider-row { display:flex; align-items:center; gap:10px; margin:6px 2px 4px; }
+        .slider-row .ico { font-size:1rem; opacity:.85; }
+        .slider-row input[type=range] { flex:1; min-width:0; accent-color:var(--primary-color,#03a9f4); }
+        .slider-row .val { font-size:.75rem; opacity:.7; min-width:46px; text-align:right; font-variant-numeric:tabular-nums; }
+        .slider-row.cct input[type=range] { -webkit-appearance:none; appearance:none; height:8px; border-radius:6px;
+                background:linear-gradient(90deg,#ffb763,#fff,#bcd2ff); }
+        .grid.swatches { max-height:none; }
+        .thumb.swatch { border-radius:8px; }
+        .thumb.picker { position:relative; overflow:hidden; }
+        .thumb.picker input[type=color] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:none; padding:0; background:none; }
         .warn { padding:16px; color:var(--error-color,#c62828); }
         @media (max-width:600px){ .grid{ grid-template-columns:repeat(3,1fr); } }
       </style>

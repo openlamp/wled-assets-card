@@ -52,7 +52,12 @@
         states: {
           "light.l1": {
             entity_id: "light.l1", state: "on",
-            attributes: { friendly_name: "L1 — Salon", effect: "Aurora", effect_list: effects },
+            attributes: {
+              friendly_name: "L1 — Salon", effect: "Aurora", effect_list: effects,
+              supported_color_modes: ["color_temp", "rgbw"], color_mode: "color_temp",
+              brightness: 204, rgb_color: [255, 160, 60],
+              color_temp_kelvin: 4200, min_color_temp_kelvin: 2000, max_color_temp_kelvin: 6535,
+            },
           },
           "select.l1_color_palette": {
             entity_id: "select.l1_color_palette", state: "Rivendell",

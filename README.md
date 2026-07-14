@@ -66,7 +66,7 @@ entity: light.l1          # required — your WLED light entity
 language: fr              # default: hass language, fallback en
 palette_entity: select.l1_color_palette   # default: auto-derived from `entity`
 assets_base: /local/wled-assets            # where wled-assets is served
-show: [palettes, effects] # which sections, in order
+show: [colors, palettes, effects]  # which sections, in order
 columns: 4                # grid columns (3 on narrow / mobile)
 title: "L1 — Salon"       # default: the light's friendly_name
 ```
@@ -77,12 +77,16 @@ title: "L1 — Salon"       # default: the light's friendly_name
 | `palette_entity` | auto | The WLED integration's `select.<light>_color_palette`. Auto-derived; override if the naming differs. |
 | `language` | `hass.language` → `en` | One of `en fr de es it ja ko zh`. |
 | `assets_base` | `/local/wled-assets` | Base URL where `wled-assets` is served. |
-| `show` | `[palettes, effects]` | Sections to render, in order. |
+| `show` | `[colors, palettes, effects]` | Sections to render, in order. `colors` = on/off, brightness, RGB swatches + custom picker, and tunable white (CCT) — shown per the light's real `supported_color_modes`. |
 | `columns` | `4` | Grid columns (auto-drops to 3 ≤ 600 px). |
 | `title` | friendly name | Card header. |
 
 ## How it works
 
+- **Colours** — a direct controller (not backed by wled-assets): on/off, a brightness
+  slider, RGB swatches + a custom colour picker (`light.turn_on` `rgb_color`), and a
+  warm↔cool white slider (`color_temp_kelvin`). Controls appear only for the modes the
+  light's `supported_color_modes` actually advertises.
 - **Effects** — read from `light.<id>` attributes: `effect_list` (the choices) and `effect`
   (the current one). Tapping a cell calls `light.turn_on` with `effect: <English name>`.
 - **Palettes** — read from the WLED integration's `select.<id>_color_palette`: its
