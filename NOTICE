@@ -1,7 +1,7 @@
 wled-assets-card
 Copyright (c) 2026 Benoît Besson (@Beennnn)
 
-Licensed under the EUPL v1.2 (see LICENSE).
+Licensed under the MIT License (see LICENSE).
 
 A custom Home Assistant Lovelace card that decorates a WLED light with the
 localized names and illustrations from the wled-assets layer

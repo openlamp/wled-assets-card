@@ -141,5 +141,6 @@ describe that compatibility.
 
 ## License
 
-**[EUPL-1.2](LICENSE)** — the same licence as WLED and LumiDeck, chosen to keep the project
-(and any forks) open and aligned with the WLED ecosystem.
+**[MIT](LICENSE)** — permissive, so anyone can adopt or fork it freely. WLED itself is
+EUPL-1.2; this card only interoperates with it over the public interface (no code is
+derived from WLED), so it carries no copyleft obligation.
