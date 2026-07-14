@@ -15,29 +15,22 @@
  * PROTOTYPE — alpha. Self-contained vanilla web component, no build step.
  */
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
-// Preset colours for the "Couleur" section (name per language + RGB). Colours
-// aren't part of wled-assets (no illustration/localization there), so this small
-// stage-friendly set lives in the card. Tapping a swatch → light.turn_on rgb_color.
-const COLORS = [
-  { en: "Red", fr: "Rouge", rgb: [255, 0, 0] },
-  { en: "Orange", fr: "Orange", rgb: [255, 85, 0] },
-  { en: "Amber", fr: "Ambre", rgb: [255, 170, 0] },
-  { en: "Yellow", fr: "Jaune", rgb: [255, 238, 0] },
-  { en: "Green", fr: "Vert", rgb: [0, 200, 0] },
-  { en: "Cyan", fr: "Cyan", rgb: [0, 220, 220] },
-  { en: "Blue", fr: "Bleu", rgb: [0, 90, 255] },
-  { en: "Indigo", fr: "Indigo", rgb: [75, 0, 255] },
-  { en: "Magenta", fr: "Magenta", rgb: [255, 0, 220] },
-  { en: "Pink", fr: "Rose", rgb: [255, 105, 160] },
+// The colour "slots" WLED actually exposes, as *identified by wled-assets'
+// controls layer* (i18n/controls.json + images/controls/*.png) — not an arbitrary
+// hue list. `Effect color` is the primary (col[0]) and is settable natively via
+// light.turn_on rgb_color. `Background` (col[1]) and `Custom` (col[2]) have no
+// Home Assistant entity, so they only appear when a `raw_command` (a rest_command
+// that POSTs to WLED's /json/state) is configured.
+const COLOR_SLOTS = [
+  { key: "Effect color", img: "effect-color", slot: 0, native: true },
+  { key: "Background color", img: "background-color", slot: 1 },
+  { key: "Custom color", img: "custom-color", slot: 2 },
 ];
 
-// Minimal UI strings for the colour section (en/fr; falls back to en).
-const UI = {
-  colors: { en: "🎨 Colour", fr: "🎨 Couleur" },
-  custom: { en: "Custom", fr: "Perso" },
-};
+// The few labels not carried by the assets (en/fr; falls back to en).
+const UI = { colors: { en: "Colour", fr: "Couleur" } };
 
 // Slug rule reverse-engineered from the real wled-assets image filenames:
 //   "Chase 2" -> chase-2 · "Fire 2012" -> fire-2012 · "Noise2D" -> noise2d
@@ -55,7 +48,8 @@ class WledAssetsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._i18n = { palettes: null, effects: null }; // lazy-fetched dictionaries
+    // lazy-fetched wled-assets dictionaries (names/desc per language)
+    this._i18n = { palettes: null, effects: null, controls: null, segment: null, ui: null };
     this._built = false;                             // one full render, then patch
     this._config = null;
     this._hass = null;
@@ -77,6 +71,10 @@ class WledAssetsCard extends HTMLElement {
       show: config.show || ["colors", "palettes", "effects"],
       columns: config.columns || 4,
       title: config.title ?? null,
+      // optional rest_command (name or `rest_command.<name>`) that POSTs a raw
+      // WLED /json/state patch — unlocks the Background/Custom colour slots and
+      // exact colour control on RGBCW lamps (HA's light entity can't reach col[1..2]).
+      raw_command: (config.raw_command || "").replace(/^rest_command\./, "") || null,
     };
     this._built = false;
     if (this._hass) this._render();
@@ -114,11 +112,21 @@ class WledAssetsCard extends HTMLElement {
         return {}; // graceful: everything falls back to the English key
       }
     };
-    const [palettes, effects] = await Promise.all([
+    const [palettes, effects, controls, segment, ui] = await Promise.all([
       grab("palettes.json"),
       grab("effects.json"),
+      grab("controls.json"), // Effect/Background/Custom color, Speed, Intensity…
+      grab("segment.json"), // On/Off, Transition…
+      grab("ui.json"), // Brightness…
     ]);
-    this._i18n = { palettes, effects };
+    this._i18n = { palettes, effects, controls, segment, ui };
+  }
+
+  // localized display name for a key in any of the loaded dictionaries
+  _locName(dict, key) {
+    const e = dict && dict[key];
+    if (!e) return key;
+    return (e[this._lang] && e[this._lang].name) || (e.en && e.en.name) || key;
   }
 
   // localized {name, desc} for an English WLED key, with en → key fallbacks
@@ -183,11 +191,14 @@ class WledAssetsCard extends HTMLElement {
 
   // ---- colour section -----------------------------------------------------
 
-  // Not backed by wled-assets — a direct controller for on/off, brightness,
-  // RGB (swatches + custom picker) and tunable white (CCT), driven off the
-  // light entity's real supported_color_modes so it only shows what the lamp can do.
+  // Base functions, grounded in wled-assets' `controls` layer: On/Off (segment
+  // "On/Off"), Brightness (ui "Brightness"), and the colour SLOTS the assets
+  // identify (Effect / Background / Custom colour) — each with its localized name
+  // and illustration. Only what the lamp can actually do is shown.
   _colorsSection(st) {
     const a = st.attributes;
+    const base = this._config.assets_base;
+    const raw = this._config.raw_command;
     const modes = a.supported_color_modes || [];
     const hasRgb = modes.some((m) => ["rgb", "rgbw", "rgbww", "hs", "xy"].includes(m));
     const hasCct = modes.includes("color_temp");
@@ -200,20 +211,22 @@ class WledAssetsCard extends HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "section colors";
 
+    // header + On/Off toggle (labelled from the assets)
+    const onoff = this._locName(this._i18n.segment, "On/Off");
     const head = document.createElement("div");
     head.className = "sec-head";
-    head.innerHTML = `<span class="sec-label">${this._t("colors")}</span>
-      <button class="power ${on ? "on" : ""}" title="On/Off">⏻</button>`;
+    head.innerHTML = `<span class="sec-label">🎨 ${this._t("colors")}</span>
+      <button class="power ${on ? "on" : ""}" title="${onoff}">⏻</button>`;
     head.querySelector(".power").addEventListener("click", () =>
-      this._hass.callService("light", on ? "turn_off" : "turn_on", {
-        entity_id: this._config.entity,
-      })
+      this._hass.callService("light", on ? "turn_off" : "turn_on", { entity_id: this._config.entity })
     );
     wrap.appendChild(head);
 
     // Brightness (fires on release to avoid flooding the lamp)
+    const briName = this._locName(this._i18n.ui, "Brightness");
     const bri = document.createElement("label");
     bri.className = "slider-row";
+    bri.title = briName;
     bri.innerHTML = `<span class="ico">💡</span>
       <input type="range" min="1" max="100" value="${briPct || 1}">
       <span class="val">${briPct}%</span>`;
@@ -225,30 +238,29 @@ class WledAssetsCard extends HTMLElement {
     );
     wrap.appendChild(bri);
 
-    // RGB swatches + custom picker
-    if (hasRgb) {
-      const grid = document.createElement("div");
-      grid.className = "grid swatches";
-      grid.style.setProperty("--cols", this._config.columns);
-      COLORS.forEach((c) => {
-        const name = c[this._lang] || c.en;
-        const cell = document.createElement("button");
-        cell.className = "cell";
-        cell.title = name;
-        cell.innerHTML = `<span class="thumb swatch" style="background:rgb(${c.rgb.join(",")})"></span><span class="name">${name}</span>`;
-        cell.addEventListener("click", () => this._light({ rgb_color: c.rgb }));
-        grid.appendChild(cell);
+    // Colour slots identified by wled-assets (compact rows): Effect colour always
+    // (native, col[0]); Background/Custom only when a raw_command reaches col[1..2].
+    if (hasRgb || raw) {
+      COLOR_SLOTS.filter((s) => s.native || raw).forEach((s) => {
+        const name = this._locName(this._i18n.controls, s.key);
+        const cur = s.slot === 0 && a.rgb_color ? this._rgbToHex(a.rgb_color) : "#ffffff";
+        const row = document.createElement("label");
+        row.className = "color-row";
+        row.title = name;
+        row.innerHTML = `
+          <img class="ci" loading="lazy" src="${base}/images/controls/${s.img}.png" alt=""
+               onerror="this.style.visibility='hidden'" />
+          <span class="cname">${name}</span>
+          <span class="chip" style="background:${cur}"><input type="color" value="${cur}" /></span>`;
+        const input = row.querySelector("input");
+        input.addEventListener("input", (e) => {
+          row.querySelector(".chip").style.background = e.target.value;
+        });
+        input.addEventListener("change", (e) =>
+          this._applyColorSlot(s, this._hexToRgb(e.target.value))
+        );
+        wrap.appendChild(row);
       });
-      const custom = document.createElement("label");
-      custom.className = "cell";
-      custom.innerHTML = `<span class="thumb picker" style="background:${this._rgbToHex(a.rgb_color)}"><input type="color" value="${this._rgbToHex(a.rgb_color)}"></span><span class="name">${this._t("custom")}</span>`;
-      const inp = custom.querySelector("input");
-      inp.addEventListener("input", (e) => {
-        custom.querySelector(".picker").style.background = e.target.value;
-      });
-      inp.addEventListener("change", (e) => this._light({ rgb_color: this._hexToRgb(e.target.value) }));
-      grid.appendChild(custom);
-      wrap.appendChild(grid);
     }
 
     // Tunable white (CCT)
@@ -268,6 +280,18 @@ class WledAssetsCard extends HTMLElement {
     }
 
     return wrap;
+  }
+
+  // Apply an RGB value to a WLED colour slot. Slot 0 (Effect colour) goes through
+  // the HA light entity; slots 1..2 need the raw /json/state patch via raw_command.
+  _applyColorSlot(s, rgb) {
+    if (this._config.raw_command) {
+      const col = [null, null, null];
+      col[s.slot] = rgb; // null slots = unchanged, per WLED /json/state semantics
+      this._hass.callService("rest_command", this._config.raw_command, { patch: { seg: [{ col }] } });
+    } else if (s.native) {
+      this._light({ rgb_color: rgb }); // slot 0 via the HA light entity
+    }
   }
 
   // ---- render -------------------------------------------------------------
@@ -413,10 +437,11 @@ class WledAssetsCard extends HTMLElement {
         .slider-row .val { font-size:.75rem; opacity:.7; min-width:46px; text-align:right; font-variant-numeric:tabular-nums; }
         .slider-row.cct input[type=range] { -webkit-appearance:none; appearance:none; height:8px; border-radius:6px;
                 background:linear-gradient(90deg,#ffb763,#fff,#bcd2ff); }
-        .grid.swatches { max-height:none; }
-        .thumb.swatch { border-radius:8px; }
-        .thumb.picker { position:relative; overflow:hidden; }
-        .thumb.picker input[type=color] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:none; padding:0; background:none; }
+        .color-row { display:flex; align-items:center; gap:10px; margin:5px 2px; padding:3px 4px; }
+        .color-row .ci { width:34px; height:34px; flex:none; object-fit:contain; border-radius:8px; background:var(--secondary-background-color,#0002); padding:3px; }
+        .color-row .cname { flex:1; font-size:.85rem; }
+        .color-row .chip { position:relative; width:52px; height:28px; flex:none; border-radius:8px; border:1px solid #ffffff40; overflow:hidden; cursor:pointer; }
+        .color-row .chip input[type=color] { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:none; padding:0; cursor:pointer; background:none; }
         .warn { padding:16px; color:var(--error-color,#c62828); }
         @media (max-width:600px){ .grid{ grid-template-columns:repeat(3,1fr); } }
       </style>
