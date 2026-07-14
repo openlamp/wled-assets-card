@@ -1,0 +1,18 @@
+wled-assets-card
+Copyright (c) 2026 Benoît Besson (@Beennnn)
+
+Licensed under the EUPL v1.2 (see LICENSE).
+
+A custom Home Assistant Lovelace card that decorates a WLED light with the
+localized names and illustrations from the wled-assets layer
+(https://github.com/openlamp/wled-assets, CC0). Part of the OpenLamp family.
+
+WLED is an independent open-source project (https://github.com/wled/WLED),
+originally by Christian Schwinne (Aircoookie) and now maintained by the WLED
+community, licensed under the EUPL v1.2. This card is NOT affiliated with or
+endorsed by the WLED project; it interoperates only with the entities that the
+Home Assistant WLED integration exposes.
+
+Home Assistant is a trademark of the Open Home Foundation, referenced only to
+describe compatibility. This project is not affiliated with or endorsed by the
+Home Assistant project.

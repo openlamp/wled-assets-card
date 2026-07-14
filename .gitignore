@@ -1,0 +1,3 @@
+# local wled-assets checkout symlinked for the preview harness
+examples/assets
+.DS_Store

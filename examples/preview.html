@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wled-assets-card — standalone preview</title>
+  <!--
+    Standalone harness — no Home Assistant required. It mocks the `hass` object
+    surface the card touches (a WLED light + its color-palette select) and points
+    the card at a real wled-assets checkout.
+
+    Run it:
+      ln -s ../../wled-assets examples/assets     # or copy wled-assets there
+      python3 -m http.server 8391                 # from the repo root
+      open http://localhost:8391/examples/preview.html
+    (fetch() needs http://, not file://)
+  -->
+  <style>
+    body { margin:0; background:#111418; color:#e8eaed; font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:24px; }
+    .wrap { max-width:760px; margin:0 auto; }
+    h1 { font-size:1rem; font-weight:600; opacity:.7; margin:0 0 4px; }
+    p.sub { margin:0 0 18px; font-size:.8rem; opacity:.5; }
+    ha-card { display:block; background:#1c2026; border:1px solid #2a2f37; border-radius:16px; }
+    :root {
+      --primary-color:#03a9f4; --primary-text-color:#e8eaed; --divider-color:#3a4048;
+      --secondary-background-color:#252a31; --error-color:#ef5350;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>wled-assets-card — standalone preview (mock hass, real assets)</h1>
+    <p class="sub" id="sub">loading…</p>
+    <wled-assets-card id="card"></wled-assets-card>
+  </div>
+
+  <script src="../wled-assets-card.js"></script>
+  <script>
+    const ASSETS = "./assets"; // symlink/copy of the wled-assets repo
+
+    (async () => {
+      // Derive the effect/palette name lists straight from the asset dictionaries,
+      // so the preview always matches whatever wled-assets you point it at.
+      const keys = async (file) =>
+        Object.keys((await (await fetch(`${ASSETS}/i18n/${file}`)).json()).entries);
+      const [effects, palettes] = await Promise.all([keys("effects.json"), keys("palettes.json")]);
+      document.getElementById("sub").textContent =
+        `light.l1 = ${effects.length} effects · select.l1_color_palette = ${palettes.length} palettes · language fr`;
+
+      const hass = {
+        language: "fr",
+        states: {
+          "light.l1": {
+            entity_id: "light.l1", state: "on",
+            attributes: { friendly_name: "L1 — Salon", effect: "Aurora", effect_list: effects },
+          },
+          "select.l1_color_palette": {
+            entity_id: "select.l1_color_palette", state: "Rivendell",
+            attributes: { friendly_name: "L1 Color palette", options: palettes },
+          },
+        },
+        callService: (domain, service, data) => {
+          console.log("callService", domain, service, data);
+          if (service === "turn_on" && data.effect) hass.states["light.l1"].attributes.effect = data.effect;
+          if (service === "select_option") hass.states["select.l1_color_palette"].state = data.option;
+        },
+      };
+
+      const card = document.getElementById("card");
+      card.setConfig({ entity: "light.l1", language: "fr", assets_base: ASSETS, columns: 4 });
+      card.hass = hass;
+    })();
+  </script>
+</body>
+</html>
