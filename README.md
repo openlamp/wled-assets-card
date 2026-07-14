@@ -22,7 +22,7 @@ back to the plain English name whenever a translation or asset is missing, so yo
 worse off than the stock dropdown.
 
 <sub>Part of the **[OpenLamp](https://github.com/openlamp)** family, alongside
-[LumiDeck](https://github.com/Beennnn/lumideck) (a Stream Deck controller for WLED) and
+[LumiDeck](https://github.com/openlamp/lumideck) (a Stream Deck controller for WLED) and
 [`wled-assets`](https://github.com/openlamp/wled-assets) (the shared asset layer this card consumes).</sub>
 
 > ⚠️ **Alpha / prototype.** Renders correctly against the real 72 palettes + 217 effects
@@ -99,7 +99,7 @@ The card is a self-contained vanilla web component — no build step, no depende
 
 Requires the Home Assistant **WLED** integration configured for the lamp (it provides both
 the `light` entity and the `..._color_palette` select). Coexists cleanly with other WLED
-clients (e.g. [LumiDeck](https://github.com/Beennnn/lumideck)): WLED pushes live state over
+clients (e.g. [LumiDeck](https://github.com/openlamp/lumideck)): WLED pushes live state over
 its WebSocket, so changes made elsewhere are reflected in HA — and in this card — in real time.
 
 ## Credits & attribution
