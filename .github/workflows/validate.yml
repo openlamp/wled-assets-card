@@ -1,0 +1,22 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]      # not on tags — a release tag must not re-trigger validation
+                          # (otherwise the release predates its own run, failing hacs/default's
+                          #  "release created after a successful validation" check)
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, so HACS/action drift is caught even without commits
+  workflow_dispatch:
+
+jobs:
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: HACS Action
+        uses: hacs/action@main
+        with:
+          category: plugin
