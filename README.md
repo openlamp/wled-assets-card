@@ -29,6 +29,8 @@ worse off than the stock dropdown.
 
 ## What it looks like
 
+![wled-assets-card — a WLED light decorated with localized palette & effect thumbnails](images/preview.png)
+
 Run [`examples/preview.html`](examples/preview.html) — a standalone harness that mocks a
 `hass` object and points at a real `wled-assets` checkout, no Home Assistant required.
 
